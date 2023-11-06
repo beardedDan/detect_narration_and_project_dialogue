@@ -1,14 +1,15 @@
-import re
 import spacy
 nlp = spacy.load("en_core_web_sm")
-    
+import re
+
 def remove_special_characters(text, remove_digits=False):
     pattern = r'[^a-zA-z0-9\s"]' if not remove_digits else r'[^A-Za-z\s"]'
     text = re.sub(pattern, ' ', text) # Remove special characters
     text = re.sub(r'\s+', ' ', text)  # Remove extra spaces    
     return text
 
-def count_named_persons_w_spacy(text):
+
+def named_persons_w_spacy(text):
     text_nlp = nlp(text)
     ner_tagged = [(word.text,word.ent_type_) for word in text_nlp]
     named_entities = []
@@ -29,4 +30,4 @@ def count_named_persons_w_spacy(text):
         characters.append(item[0])
     characters = list(set(characters))
     num_characters = len(characters)
-    return(num_characters)
+    return characters
