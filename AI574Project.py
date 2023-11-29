@@ -1,7 +1,7 @@
 import os
-# os.environ["CUDA_VISIBLE_DEVICES"]="-1" 
+os.environ["CUDA_VISIBLE_DEVICES"]="-1" 
 import tensorflow as tf
-tf.load_library("/etc/alternatives/libcudnn_so")
+# tf.load_library("/etc/alternatives/libcudnn_so")
 
 current_directory = os.getcwd()
 import spacy
@@ -87,6 +87,8 @@ def insert_newline_every_n_words(text, n=20):
         words.insert(i, '\n')
         i += 1 
     return ' '.join(words)
+
+
 
 def named_persons_w_spacy(text):
     text_nlp = nlp(text)
@@ -310,15 +312,17 @@ class StatisticalNameData():
         UNIQUE_NAMES_LIST = UNIQUE_NAMES_LIST + cust_names
         return UNIQUE_NAMES_LIST
 
-    def ner_process_line(self, text):
+    def ner_process_line(self, text, is_list=False):
         clean_pattern = re.compile(r'[^a-zA-Z\s]')
         special_char_pattern = re.compile(r'[^\w\s]')
         clean_words = []
         line_scores = []
         previous_word = None
         previous_dirty_word = ''
-        
-        words = text.split()        
+        if is_list:
+            words = text
+        else:
+            words = text.split()        
         for dirty_word in words:
             cleaned_word = clean_pattern.sub('', dirty_word)
             line_scores.append(str(int(self.is_name(cleaned_word))))
@@ -819,8 +823,12 @@ class CTCSetup(StatisticalNameData, QuotationIndicator):
                     quotation_ind.append('1')
                     items.append(trimmed_segment[3:-3].strip())
                     names, tokens, one_hot_mentions_line = self.list_mentions(trimmed_segment)
+                    
                     if any(tokens['input_ids']) > 0:
-                        most_recent_mentions = tokens['input_ids']
+                        
+                        most_recent_mentions_attention_mask = [1 if token_id > 0 else 0 for token_id in tokens['input_ids']]
+                        most_recent_mentions = [mention for mention, mask in zip(tokens['input_ids'], most_recent_mentions_attention_mask) if mask == 1]
+
                     one_hot_mentions.append(one_hot_mentions_line)
                     # items.append(trimmed_segment)
                     padded_tokenized_segment = self.convert_text_to_token(trimmed_segment)
@@ -838,7 +846,8 @@ class CTCSetup(StatisticalNameData, QuotationIndicator):
                     quotation_ind.append('0')
                     names, tokens, one_hot_mentions_line = self.list_mentions(trimmed_segment)
                     if any(tokens['input_ids']) > 0:
-                        most_recent_mentions = tokens['input_ids']                
+                        most_recent_mentions_attention_mask = [1 if token_id > 0 else 0 for token_id in tokens['input_ids']]
+                        most_recent_mentions = [mention for mention, mask in zip(tokens['input_ids'], most_recent_mentions_attention_mask) if mask == 1]
                     one_hot_mentions.append(one_hot_mentions_line)
                     items.append(trimmed_segment)
                     padded_tokenized_segment = self.convert_text_to_token(trimmed_segment)
@@ -869,8 +878,8 @@ class CTCSpeakerPrediction(tf.keras.Model):
             )
         self.batnorm = layers.BatchNormalization(name="conv_1_bn")        
         self.relu = layers.ReLU(name="conv_2_relu")
-        self.flatten = layers.Flatten()
-        self.ff = layers.Dense(self.ff_dim, activation="relu")
+        self.dropout = layers.Dropout(rate=self.dropout_rate)        
+
         self.gru = layers.GRU(
             units=rnn_units,
             activation="tanh",
@@ -881,7 +890,7 @@ class CTCSpeakerPrediction(tf.keras.Model):
             name="gru",
         )
         self.bilstm = layers.Bidirectional(layers.LSTM(self.lstm_units, return_sequences=True))
-        self.dropout = layers.Dropout(rate=self.dropout_rate)
+        self.ff = layers.Dense(self.ff_dim, activation="relu")        
         self.output_layer = layers.Dense(output_labels, activation='softmax')
 
     def call(self, inputs):
@@ -925,7 +934,7 @@ class TrainCTCSpeakerPrediction:
         for key, value in kwargs.items():
             setattr(self, key, value)                
         
-    def add_early_stopping(self, monitor='val_accuracy', mode='min', patience = 5, verbose = 2):
+    def add_early_stopping(self, monitor='val_accuracy', mode='min', patience = 100, verbose = 2):
         es = EarlyStopping(monitor=monitor, mode=mode, patience=patience, verbose=verbose)
         self.callbacks.append(es)     
 
@@ -1013,7 +1022,6 @@ hobbit_characters = [
 ]    
     
 hobbit_chap1_scored = (
-'Narrator',
 'Narrator',
 'Narrator',
 'Narrator',
